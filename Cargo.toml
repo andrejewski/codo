@@ -1,0 +1,10 @@
+[package]
+name = "codo"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+grep = "0.2.12"
+ignore = "0.4.20"
