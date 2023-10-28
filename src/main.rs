@@ -6,11 +6,14 @@ use grep::regex::RegexMatcher;
 use grep::searcher::sinks::UTF8;
 use grep::searcher::Searcher;
 use ignore::Walk;
+use regex::Regex;
 
 // TODO: cake
 // TODO: TODO
 // TODO: This is a multi word TODO
 // TODO(data): Example with data
+// TODO(@me): Example with assignee
+// TODO(#123): Example with ticket
 
 struct Todo {
     path: PathBuf,
@@ -23,17 +26,77 @@ impl Todo {
     fn as_search_result(&self) -> String {
         match self.meta.to_owned() {
             Some(meta) => {
+                let metadata = TodoMetadata::from_string(meta.clone());
+
+                let mut info: Vec<String> = vec![];
+                if let Some(ticket) = metadata.ticket {
+                    info.push(format!("#{}", ticket))
+                }
+
+                if let Some(assignee) = metadata.assignee {
+                    info.push(format!("@{}", assignee))
+                }
+
+                if let Some(due) = metadata.due {
+                    info.push(format!("due:{}", due))
+                }
+
+                let meta_part = if info.is_empty() {
+                    meta
+                } else {
+                    info.join(", ")
+                };
+
                 format!(
                     "{}:{} [{}] {}",
                     self.path.display(),
                     self.line_number,
-                    meta,
+                    meta_part,
                     self.note
                 )
             }
             None => {
                 format!("{}:{} {}", self.path.display(), self.line_number, self.note)
             }
+        }
+    }
+}
+
+struct TodoMetadata {
+    assignee: Option<String>,
+    ticket: Option<String>,
+    due: Option<String>,
+}
+
+impl TodoMetadata {
+    fn from_string(str: String) -> Self {
+        let date_format = Regex::new(r"[0-9]{4}-[0-9]{2}-[0-9]{2}").unwrap();
+
+        let mut assignee: Option<String> = None;
+        let mut ticket: Option<String> = None;
+        let mut due: Option<String> = None;
+
+        let parts: Vec<&str> = str.trim().split(',').map(|s| s.trim()).collect();
+        for part in parts {
+            if part.starts_with('@') && assignee == None {
+                assignee = Some(part[1..].to_string());
+                continue;
+            }
+
+            if part.starts_with('#') && ticket == None {
+                ticket = Some(part[1..].to_string());
+                continue;
+            }
+
+            if date_format.is_match(part) && due == None {
+                due = Some(part.to_string())
+            }
+        }
+
+        TodoMetadata {
+            assignee,
+            ticket,
+            due,
         }
     }
 }

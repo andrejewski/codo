@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 grep = "0.2.12"
 ignore = "0.4.20"
+regex = "1.10.2"
