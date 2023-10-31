@@ -412,13 +412,13 @@ struct TodoUpdate {
     metadata: TodoMetadata,
 }
 
-fn main() -> Result<(), std::io::Error> {
+fn main() -> Result<(), ()> {
     let matcher = match RegexMatcher::new(r"(?m)^\W*(//|/\*|#) (?:(?i)TODO)(?:\((.+)\))?:? (.+?)$")
     {
         Ok(matcher) => matcher,
         Err(error) => {
             println!("ERROR: {}", error);
-            return Ok(());
+            return Err(());
         }
     };
 
@@ -439,7 +439,7 @@ fn main() -> Result<(), std::io::Error> {
                     }
                 }
 
-                searcher.search_path(
+                let search_result = searcher.search_path(
                     &matcher,
                     entry.path(),
                     UTF8(|line_number, line| {
@@ -464,8 +464,8 @@ fn main() -> Result<(), std::io::Error> {
 
                         let note_capture = captures.get(3);
                         let note = match note_capture {
-                            Some(note_match) => Some(line[note_match].to_string()),
-                            None => None,
+                            Some(note_match) => line[note_match].to_string(),
+                            None => return Ok(true),
                         };
 
                         let metadata = if let Some(meta_str) = meta.to_owned() {
@@ -474,27 +474,33 @@ fn main() -> Result<(), std::io::Error> {
                             TodoMetadata::empty()
                         };
 
-                        match note {
-                            Some(note) => {
-                                let todo = Todo {
-                                    delimiter,
-                                    path: entry.path().to_path_buf(),
-                                    line_number,
-                                    note,
-                                    meta,
-                                    metadata,
-                                };
+                        let todo = Todo {
+                            delimiter,
+                            path: entry.path().to_path_buf(),
+                            line_number,
+                            note,
+                            meta,
+                            metadata,
+                        };
 
-                                matches.push(todo);
-                            }
-                            None => {}
-                        }
+                        matches.push(todo);
 
                         Ok(true)
                     }),
-                )?;
+                );
+
+                match search_result {
+                    Ok(_) => {}
+                    Err(err) => {
+                        println!("ERROR: {}", err);
+                        return Err(());
+                    }
+                }
             }
-            Err(err) => println!("ERROR: {}", err),
+            Err(err) => {
+                println!("ERROR: {}", err);
+                return Err(());
+            }
         }
     }
 
@@ -568,7 +574,8 @@ fn main() -> Result<(), std::io::Error> {
                             .join("\n")
                     )
                 } else {
-                    println!("ERROR: --group-by={} not supported", { group_by })
+                    println!("ERROR: --group-by={} not supported", { group_by });
+                    return Err(());
                 }
             } else {
                 println!("{}", results.len())
@@ -597,7 +604,8 @@ fn main() -> Result<(), std::io::Error> {
             );
 
             if results.is_empty() {
-                println!("<no TODOs>")
+                println!("<no TODOs>");
+                return Err(());
             } else {
                 println!(
                     "{}",
@@ -659,7 +667,8 @@ fn main() -> Result<(), std::io::Error> {
                 .collect();
 
             if updates.is_empty() {
-                println!("No TODOs found")
+                println!("No TODOs found");
+                return Err(());
             } else {
                 apply_updates(updates);
                 println!("TODOs formatted.")
@@ -687,7 +696,8 @@ fn main() -> Result<(), std::io::Error> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs citing ticket \"{}\"", ticket)
+                    println!("No TODOs citing ticket \"{}\"", ticket);
+                    return Err(());
                 } else {
                     apply_updates(updates);
                     println!("All citations of ticket \"{}\" were removed.", ticket)
@@ -714,7 +724,8 @@ fn main() -> Result<(), std::io::Error> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs citing any tickets")
+                    println!("No TODOs citing any tickets");
+                    return Err(());
                 } else {
                     apply_updates(updates);
                     println!("All citations of tickets were removed.")
@@ -741,7 +752,8 @@ fn main() -> Result<(), std::io::Error> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs citing ticket \"{}\"", from)
+                    println!("No TODOs citing ticket \"{}\"", from);
+                    return Err(());
                 } else {
                     apply_updates(updates);
                     println!(
@@ -771,7 +783,8 @@ fn main() -> Result<(), std::io::Error> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs untracked")
+                    println!("No TODOs untracked");
+                    return Err(());
                 } else {
                     apply_updates(updates);
                     println!("All untracked TODOs now cite ticket \"{}\".", ticket)
@@ -798,7 +811,8 @@ fn main() -> Result<(), std::io::Error> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs assigned to \"{}\"", assignee)
+                    println!("No TODOs assigned to \"{}\"", assignee);
+                    return Err(());
                 } else {
                     apply_updates(updates);
                     println!("All TODOs assigned to \"{}\" were unassigned.", assignee)
@@ -825,7 +839,8 @@ fn main() -> Result<(), std::io::Error> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs assigned")
+                    println!("No TODOs assigned");
+                    return Err(());
                 } else {
                     apply_updates(updates);
                     println!("All TODOs were unassigned.")
@@ -852,7 +867,8 @@ fn main() -> Result<(), std::io::Error> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs assigned to \"{}\"", from)
+                    println!("No TODOs assigned to \"{}\"", from);
+                    return Err(());
                 } else {
                     apply_updates(updates);
                     println!(
@@ -882,7 +898,8 @@ fn main() -> Result<(), std::io::Error> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs unassigned")
+                    println!("No TODOs unassigned");
+                    return Err(());
                 } else {
                     apply_updates(updates);
                     println!("All unassigned TODOs assigned to \"{}\"", assignee)
@@ -909,7 +926,8 @@ fn main() -> Result<(), std::io::Error> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs citing ticket \"{}\"", ticket)
+                    println!("No TODOs citing ticket \"{}\"", ticket);
+                    return Err(());
                 } else {
                     apply_updates(updates);
                     println!(
@@ -939,7 +957,8 @@ fn main() -> Result<(), std::io::Error> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs with due dates")
+                    println!("No TODOs with due dates");
+                    return Err(());
                 } else {
                     apply_updates(updates);
                     println!("All TODO due dates were removed.")
@@ -966,7 +985,8 @@ fn main() -> Result<(), std::io::Error> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs without due dates")
+                    println!("No TODOs without due dates");
+                    return Err(());
                 } else {
                     apply_updates(updates);
                     println!(
@@ -996,7 +1016,8 @@ fn main() -> Result<(), std::io::Error> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs citing ticket \"{}\"", ticket)
+                    println!("No TODOs citing ticket \"{}\"", ticket);
+                    return Err(());
                 } else {
                     apply_updates(updates);
                     println!(
