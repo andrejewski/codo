@@ -194,6 +194,20 @@ enum Commands {
         #[arg(long)]
         group_by: Option<String>,
     },
+    Lint {
+        #[arg(long)]
+        require_assignees: bool,
+
+        #[arg(long)]
+        require_tickets: bool,
+
+        #[arg(long)]
+        require_due_dates: bool,
+
+        #[arg(long)]
+        allowed_assignees: Option<Vec<String>>,
+    },
+    Fmt,
     Mod {
         #[command(subcommand)]
         code_mod: CodeMod,
@@ -202,12 +216,38 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum CodeMod {
+    RemoveTicket {
+        #[arg(long)]
+        ticket: String,
+    },
+    RemoveAllTickets,
     RenameTicket {
         #[arg(long)]
         from: String,
 
         #[arg(long)]
         to: String,
+    },
+    AddTicketForAllUntracked {
+        #[arg(long)]
+        ticket: String,
+    },
+
+    RemoveAssignee {
+        #[arg(long)]
+        assignee: String,
+    },
+    RemoveAllAssignees,
+    RenameAssignee {
+        #[arg(long)]
+        from: String,
+
+        #[arg(long)]
+        to: String,
+    },
+    AssignUnassigned {
+        #[arg(long)]
+        assignee: String,
     },
 
     AssignTicket {
@@ -216,6 +256,19 @@ enum CodeMod {
 
         #[arg(long)]
         assignee: String,
+    },
+
+    RemoveAllDueDates,
+    AddMissingDueDates {
+        #[arg(long)]
+        date: String,
+    },
+    SetTicketDueDate {
+        #[arg(long)]
+        ticket: String,
+
+        #[arg(long)]
+        date: String,
     },
 }
 
@@ -528,14 +581,69 @@ fn main() -> Result<(), std::io::Error> {
                 );
             }
         }
+        Commands::Lint {
+            require_assignees,
+            require_tickets,
+            require_due_dates,
+            allowed_assignees,
+        } => {
+            let invalid_items: Vec<Todo> = matches
+                .into_iter()
+                .filter(|todo| {
+                    require_assignees && todo.metadata.assignee == None
+                        || if let Some(allowed) = &allowed_assignees {
+                            if let Some(assignee) = &todo.metadata.assignee {
+                                allowed.contains(&assignee)
+                            } else {
+                                false
+                            }
+                        } else {
+                            true
+                        }
+                        || require_tickets && todo.metadata.ticket == None
+                        || require_due_dates && todo.metadata.due == None
+                })
+                .collect();
+
+            if invalid_items.is_empty() {
+                println!(
+                    "{}",
+                    invalid_items
+                        .into_iter()
+                        .map(|t| t.as_search_result())
+                        .collect::<Vec<String>>()
+                        .join("\n"),
+                )
+            } else {
+                println!("No TODO formatting errors found. Great job!")
+            }
+        }
+        Commands::Fmt => {
+            let updates: Vec<TodoUpdate> = matches
+                .into_iter()
+                .map(|item| TodoUpdate {
+                    metadata: item.metadata,
+                    note: item.note,
+                    path: item.path,
+                    line_number: item.line_number,
+                })
+                .collect();
+
+            if updates.is_empty() {
+                println!("No TODOs found")
+            } else {
+                apply_updates(updates);
+                println!("TODOs formatted.")
+            }
+        }
         Commands::Mod { code_mod } => match code_mod {
-            CodeMod::AssignTicket { ticket, assignee } => {
+            CodeMod::RemoveTicket { ticket } => {
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
                     .filter(|todo| todo.metadata.ticket == Some(ticket.to_owned()))
                     .map(|item| {
                         let new_metadata = TodoMetadata {
-                            assignee: Some(assignee.clone()),
+                            ticket: None,
                             ..item.metadata
                         };
 
@@ -549,13 +657,36 @@ fn main() -> Result<(), std::io::Error> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs matching ticket \"{}\"", ticket)
+                    println!("No TODOs citing ticket \"{}\"", ticket)
                 } else {
                     apply_updates(updates);
-                    println!(
-                        "All TODOs with ticket \"{}\" assigned to \"{}\"",
-                        ticket, assignee
-                    )
+                    println!("All citations of ticket \"{}\" were removed.", ticket)
+                }
+            }
+            CodeMod::RemoveAllTickets => {
+                let updates: Vec<TodoUpdate> = matches
+                    .into_iter()
+                    .filter(|todo| todo.metadata.ticket != None)
+                    .map(|item| {
+                        let new_metadata = TodoMetadata {
+                            ticket: None,
+                            ..item.metadata
+                        };
+
+                        TodoUpdate {
+                            metadata: new_metadata,
+                            note: item.note,
+                            path: item.path,
+                            line_number: item.line_number,
+                        }
+                    })
+                    .collect();
+
+                if updates.is_empty() {
+                    println!("No TODOs citing any tickets")
+                } else {
+                    apply_updates(updates);
+                    println!("All citations of tickets were removed.")
                 }
             }
             CodeMod::RenameTicket { from, to } => {
@@ -578,10 +709,259 @@ fn main() -> Result<(), std::io::Error> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs matching ticket \"{}\"", from)
+                    println!("No TODOs citing ticket \"{}\"", from)
                 } else {
                     apply_updates(updates);
-                    println!("All TODOs with ticket \"{}\" assigned to \"{}\"", from, to)
+                    println!(
+                        "All TODOs citing ticket \"{}\" assigned to \"{}\"",
+                        from, to
+                    )
+                }
+            }
+            CodeMod::AddTicketForAllUntracked { ticket } => {
+                let updates: Vec<TodoUpdate> = matches
+                    .into_iter()
+                    .filter(|todo| todo.metadata.ticket == None)
+                    .map(|item| {
+                        let new_metadata = TodoMetadata {
+                            ticket: Some(ticket.clone()),
+                            ..item.metadata
+                        };
+
+                        TodoUpdate {
+                            metadata: new_metadata,
+                            note: item.note,
+                            path: item.path,
+                            line_number: item.line_number,
+                        }
+                    })
+                    .collect();
+
+                if updates.is_empty() {
+                    println!("No TODOs untracked")
+                } else {
+                    apply_updates(updates);
+                    println!("All untracked TODOs now cite ticket \"{}\".", ticket)
+                }
+            }
+            CodeMod::RemoveAssignee { assignee } => {
+                let updates: Vec<TodoUpdate> = matches
+                    .into_iter()
+                    .filter(|todo| todo.metadata.assignee == Some(assignee.to_owned()))
+                    .map(|item| {
+                        let new_metadata = TodoMetadata {
+                            assignee: None,
+                            ..item.metadata
+                        };
+
+                        TodoUpdate {
+                            metadata: new_metadata,
+                            note: item.note,
+                            path: item.path,
+                            line_number: item.line_number,
+                        }
+                    })
+                    .collect();
+
+                if updates.is_empty() {
+                    println!("No TODOs assigned to \"{}\"", assignee)
+                } else {
+                    apply_updates(updates);
+                    println!("All TODOs assigned to \"{}\" were unassigned.", assignee)
+                }
+            }
+            CodeMod::RemoveAllAssignees => {
+                let updates: Vec<TodoUpdate> = matches
+                    .into_iter()
+                    .filter(|todo| todo.metadata.assignee != None)
+                    .map(|item| {
+                        let new_metadata = TodoMetadata {
+                            assignee: None,
+                            ..item.metadata
+                        };
+
+                        TodoUpdate {
+                            metadata: new_metadata,
+                            note: item.note,
+                            path: item.path,
+                            line_number: item.line_number,
+                        }
+                    })
+                    .collect();
+
+                if updates.is_empty() {
+                    println!("No TODOs assigned")
+                } else {
+                    apply_updates(updates);
+                    println!("All TODOs were unassigned.")
+                }
+            }
+            CodeMod::RenameAssignee { from, to } => {
+                let updates: Vec<TodoUpdate> = matches
+                    .into_iter()
+                    .filter(|todo| todo.metadata.assignee == Some(from.to_owned()))
+                    .map(|item| {
+                        let new_metadata = TodoMetadata {
+                            assignee: Some(to.clone()),
+                            ..item.metadata
+                        };
+
+                        TodoUpdate {
+                            metadata: new_metadata,
+                            note: item.note,
+                            path: item.path,
+                            line_number: item.line_number,
+                        }
+                    })
+                    .collect();
+
+                if updates.is_empty() {
+                    println!("No TODOs assigned to \"{}\"", from)
+                } else {
+                    apply_updates(updates);
+                    println!(
+                        "All TODOs assigned to \"{}\" were reassigned to \"{}\"",
+                        from, to
+                    )
+                }
+            }
+            CodeMod::AssignUnassigned { assignee } => {
+                let updates: Vec<TodoUpdate> = matches
+                    .into_iter()
+                    .filter(|todo| todo.metadata.assignee == None)
+                    .map(|item| {
+                        let new_metadata = TodoMetadata {
+                            assignee: Some(assignee.clone()),
+                            ..item.metadata
+                        };
+
+                        TodoUpdate {
+                            metadata: new_metadata,
+                            note: item.note,
+                            path: item.path,
+                            line_number: item.line_number,
+                        }
+                    })
+                    .collect();
+
+                if updates.is_empty() {
+                    println!("No TODOs unassigned")
+                } else {
+                    apply_updates(updates);
+                    println!("All unassigned TODOs assigned to \"{}\"", assignee)
+                }
+            }
+            CodeMod::AssignTicket { ticket, assignee } => {
+                let updates: Vec<TodoUpdate> = matches
+                    .into_iter()
+                    .filter(|todo| todo.metadata.ticket == Some(ticket.to_owned()))
+                    .map(|item| {
+                        let new_metadata = TodoMetadata {
+                            assignee: Some(assignee.clone()),
+                            ..item.metadata
+                        };
+
+                        TodoUpdate {
+                            metadata: new_metadata,
+                            note: item.note,
+                            path: item.path,
+                            line_number: item.line_number,
+                        }
+                    })
+                    .collect();
+
+                if updates.is_empty() {
+                    println!("No TODOs citing ticket \"{}\"", ticket)
+                } else {
+                    apply_updates(updates);
+                    println!(
+                        "All TODOs citing ticket \"{}\" assigned to \"{}\"",
+                        ticket, assignee
+                    )
+                }
+            }
+            CodeMod::RemoveAllDueDates => {
+                let updates: Vec<TodoUpdate> = matches
+                    .into_iter()
+                    .filter(|todo| todo.metadata.due != None)
+                    .map(|item| {
+                        let new_metadata = TodoMetadata {
+                            due: None,
+                            ..item.metadata
+                        };
+
+                        TodoUpdate {
+                            metadata: new_metadata,
+                            note: item.note,
+                            path: item.path,
+                            line_number: item.line_number,
+                        }
+                    })
+                    .collect();
+
+                if updates.is_empty() {
+                    println!("No TODOs with due dates")
+                } else {
+                    apply_updates(updates);
+                    println!("All TODO due dates were removed.")
+                }
+            }
+            CodeMod::AddMissingDueDates { date } => {
+                let updates: Vec<TodoUpdate> = matches
+                    .into_iter()
+                    .filter(|todo| todo.metadata.due == None)
+                    .map(|item| {
+                        let new_metadata = TodoMetadata {
+                            due: Some(date.clone()),
+                            ..item.metadata
+                        };
+
+                        TodoUpdate {
+                            metadata: new_metadata,
+                            note: item.note,
+                            path: item.path,
+                            line_number: item.line_number,
+                        }
+                    })
+                    .collect();
+
+                if updates.is_empty() {
+                    println!("No TODOs without due dates")
+                } else {
+                    apply_updates(updates);
+                    println!(
+                        "All TODO without due dates were set to be due \"{}\".",
+                        date
+                    )
+                }
+            }
+            CodeMod::SetTicketDueDate { ticket, date } => {
+                let updates: Vec<TodoUpdate> = matches
+                    .into_iter()
+                    .filter(|todo| todo.metadata.ticket == Some(ticket.to_owned()))
+                    .map(|item| {
+                        let new_metadata = TodoMetadata {
+                            due: Some(date.clone()),
+                            ..item.metadata
+                        };
+
+                        TodoUpdate {
+                            metadata: new_metadata,
+                            note: item.note,
+                            path: item.path,
+                            line_number: item.line_number,
+                        }
+                    })
+                    .collect();
+
+                if updates.is_empty() {
+                    println!("No TODOs citing ticket \"{}\"", ticket)
+                } else {
+                    apply_updates(updates);
+                    println!(
+                        "All TODO citing ticket \"{}\" to be due \"{}\".",
+                        ticket, date
+                    )
                 }
             }
         },
