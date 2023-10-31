@@ -12,15 +12,6 @@ use grep::searcher::Searcher;
 use ignore::Walk;
 use regex::Regex;
 
-// TODO: cake
-// TODO: TODO
-// TODO: This is a multi word TODO
-// TODO(data): Example with data
-// TODO(@me): Example with assignee
-// TODO(#123): Example with ticket
-// TODO(2023-10-10): Overdue example
-// TODO(2023-12-12): Not yet due example
-
 struct Todo {
     path: PathBuf,
     line_number: u64,
@@ -309,7 +300,7 @@ fn apply_updates(updates: Vec<TodoUpdate>) {
         file_updates
             .entry(update.path.clone())
             .or_default()
-            .insert(update.line_number, update);
+            .insert(update.line_number - 1, update);
     }
 
     for (path, line_updates) in file_updates.borrow_mut() {
@@ -317,8 +308,8 @@ fn apply_updates(updates: Vec<TodoUpdate>) {
             let mut output_lines: Vec<String> = vec![];
 
             let reader = BufReader::new(handle);
-            for (num, line) in reader.lines().enumerate() {
-                if let Ok(line) = line {
+            for (num, line_result) in reader.lines().enumerate() {
+                if let Ok(line) = line_result {
                     let new_line = if let Some(update) = line_updates.remove(&(num as u64)) {
                         let leading_whitespace = line.split("//").nth(0).unwrap_or("");
                         if let Some(meta) = make_metadata_str(update.metadata) {
