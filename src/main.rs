@@ -323,7 +323,7 @@ fn filter_todo_list(list: Vec<Todo>, filters: TodoFilters) -> Vec<Todo> {
             ) && if filters.overdue {
                 if let Some(due) = todo.metadata.due.to_owned() {
                     if let Some(date) = parse_due_date(due) {
-                        date > Local::now().date_naive()
+                        date < Local::now().date_naive()
                     } else {
                         false
                     }
