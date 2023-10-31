@@ -1,4 +1,7 @@
+use std::borrow::BorrowMut;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 
 use chrono::{Local, NaiveDate};
@@ -200,6 +203,29 @@ enum Commands {
         #[arg(long)]
         group_by: Option<String>,
     },
+    Mod {
+        #[command(subcommand)]
+        code_mod: CodeMod,
+    },
+}
+
+#[derive(Subcommand)]
+enum CodeMod {
+    RenameTicket {
+        #[arg(long)]
+        from: String,
+
+        #[arg(long)]
+        to: String,
+    },
+
+    AssignTicket {
+        #[arg(long)]
+        ticket: String,
+
+        #[arg(long)]
+        assignee: String,
+    },
 }
 
 fn filter_by_match(
@@ -254,6 +280,74 @@ fn filter_todo_list(list: Vec<Todo>, filters: TodoFilters) -> Vec<Todo> {
             }
         })
         .collect()
+}
+
+fn make_metadata_str(metadata: TodoMetadata) -> Option<String> {
+    let mut parts: Vec<String> = vec![];
+    if let Some(ticket) = metadata.ticket {
+        parts.push(format!("#{}", ticket))
+    }
+
+    if let Some(assignee) = metadata.assignee {
+        parts.push(format!("@{}", assignee))
+    }
+
+    if let Some(due) = metadata.due {
+        parts.push(format!("{}", due))
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(", "))
+    }
+}
+
+fn apply_updates(updates: Vec<TodoUpdate>) {
+    let mut file_updates: HashMap<PathBuf, HashMap<u64, TodoUpdate>> = HashMap::new();
+    for update in updates.into_iter() {
+        file_updates
+            .entry(update.path.clone())
+            .or_default()
+            .insert(update.line_number, update);
+    }
+
+    for (path, line_updates) in file_updates.borrow_mut() {
+        if let Ok(handle) = File::open(path.clone()) {
+            let mut output_lines: Vec<String> = vec![];
+
+            let reader = BufReader::new(handle);
+            for (num, line) in reader.lines().enumerate() {
+                if let Ok(line) = line {
+                    let new_line = if let Some(update) = line_updates.remove(&(num as u64)) {
+                        let leading_whitespace = line.split("//").nth(0).unwrap_or("");
+                        if let Some(meta) = make_metadata_str(update.metadata) {
+                            format!("{}// TODO({}): {}", leading_whitespace, meta, update.note)
+                        } else {
+                            format!("{}// TODO: {}", leading_whitespace, update.note)
+                        }
+                    } else {
+                        line
+                    };
+
+                    output_lines.push(new_line);
+                }
+            }
+
+            if let Ok(mut new_file) = File::create(path) {
+                let _ = new_file.write_all(output_lines.join("\n").as_bytes());
+            }
+        }
+    }
+
+    ()
+}
+
+struct TodoUpdate {
+    path: PathBuf,
+    line_number: u64,
+    note: String,
+    metadata: TodoMetadata,
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -443,6 +537,63 @@ fn main() -> Result<(), std::io::Error> {
                 );
             }
         }
+        Commands::Mod { code_mod } => match code_mod {
+            CodeMod::AssignTicket { ticket, assignee } => {
+                let updates: Vec<TodoUpdate> = matches
+                    .into_iter()
+                    .filter(|todo| todo.metadata.ticket == Some(ticket.to_owned()))
+                    .map(|item| {
+                        let new_metadata = TodoMetadata {
+                            assignee: Some(assignee.clone()),
+                            ..item.metadata
+                        };
+
+                        TodoUpdate {
+                            metadata: new_metadata,
+                            note: item.note,
+                            path: item.path,
+                            line_number: item.line_number,
+                        }
+                    })
+                    .collect();
+
+                if updates.is_empty() {
+                    println!("No TODOs matching ticket \"{}\"", ticket)
+                } else {
+                    apply_updates(updates);
+                    println!(
+                        "All TODOs with ticket \"{}\" assigned to \"{}\"",
+                        ticket, assignee
+                    )
+                }
+            }
+            CodeMod::RenameTicket { from, to } => {
+                let updates: Vec<TodoUpdate> = matches
+                    .into_iter()
+                    .filter(|todo| todo.metadata.ticket == Some(from.to_owned()))
+                    .map(|item| {
+                        let new_metadata = TodoMetadata {
+                            ticket: Some(to.clone()),
+                            ..item.metadata
+                        };
+
+                        TodoUpdate {
+                            metadata: new_metadata,
+                            note: item.note,
+                            path: item.path,
+                            line_number: item.line_number,
+                        }
+                    })
+                    .collect();
+
+                if updates.is_empty() {
+                    println!("No TODOs matching ticket \"{}\"", from)
+                } else {
+                    apply_updates(updates);
+                    println!("All TODOs with ticket \"{}\" assigned to \"{}\"", from, to)
+                }
+            }
+        },
     }
 
     Ok(())
