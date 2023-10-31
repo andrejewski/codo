@@ -13,6 +13,7 @@ use ignore::Walk;
 use regex::Regex;
 
 struct Todo {
+    delimiter: String,
     path: PathBuf,
     line_number: u64,
     note: String,
@@ -22,6 +23,16 @@ struct Todo {
 
 impl Todo {
     fn as_search_result(&self) -> String {
+        let note: String = if self.delimiter == "/*" {
+            if let Some(stripped_note) = self.note.strip_suffix("*/") {
+                stripped_note.to_string()
+            } else {
+                self.note.to_owned()
+            }
+        } else {
+            self.note.to_owned()
+        };
+
         match self.meta.to_owned() {
             Some(meta) => {
                 let metadata = TodoMetadata::from_string(meta.clone());
@@ -50,11 +61,11 @@ impl Todo {
                     self.path.display(),
                     self.line_number,
                     meta_part,
-                    self.note
+                    note
                 )
             }
             None => {
-                format!("{}:{} {}", self.path.display(), self.line_number, self.note)
+                format!("{}:{} {}", self.path.display(), self.line_number, note)
             }
         }
     }
@@ -364,11 +375,17 @@ fn apply_updates(updates: Vec<TodoUpdate>) {
             for (num, line_result) in reader.lines().enumerate() {
                 if let Ok(line) = line_result {
                     let new_line = if let Some(update) = line_updates.remove(&(num as u64)) {
-                        let leading_whitespace = line.split("//").nth(0).unwrap_or("");
+                        let leading_whitespace = line.split(&update.delimiter).nth(0).unwrap_or("");
                         if let Some(meta) = make_metadata_str(update.metadata) {
-                            format!("{}// TODO({}): {}", leading_whitespace, meta, update.note)
+                            format!(
+                                "{}{} TODO({}): {}",
+                                leading_whitespace, update.delimiter, meta, update.note
+                            )
                         } else {
-                            format!("{}// TODO: {}", leading_whitespace, update.note)
+                            format!(
+                                "{}{} TODO: {}",
+                                leading_whitespace, update.delimiter, update.note
+                            )
                         }
                     } else {
                         line
@@ -390,12 +407,14 @@ fn apply_updates(updates: Vec<TodoUpdate>) {
 struct TodoUpdate {
     path: PathBuf,
     line_number: u64,
+    delimiter: String,
     note: String,
     metadata: TodoMetadata,
 }
 
 fn main() -> Result<(), std::io::Error> {
-    let matcher = match RegexMatcher::new(r"(?m)^\W*// TODO(?:\((.+)\))?: (.+)$") {
+    let matcher = match RegexMatcher::new(r"(?m)^\W*(//|/\*|#) (?:(?i)TODO)(?:\((.+)\))?:? (.+?)$")
+    {
         Ok(matcher) => matcher,
         Err(error) => {
             println!("ERROR: {}", error);
@@ -427,39 +446,48 @@ fn main() -> Result<(), std::io::Error> {
                         let mut captures = matcher.new_captures()?;
 
                         let did_match = matcher.captures(line.as_bytes(), &mut captures)?;
-                        if did_match {
-                            let meta_capture = captures.get(1);
-                            let meta = match meta_capture {
-                                Some(meta_match) => Some(line[meta_match].to_string()),
-                                None => None,
-                            };
+                        if !did_match {
+                            return Ok(true);
+                        }
 
-                            let note_capture = captures.get(2);
-                            let note = match note_capture {
-                                Some(note_match) => Some(line[note_match].to_string()),
-                                None => None,
-                            };
+                        let delimiter_capture = captures.get(1);
+                        let delimiter = match delimiter_capture {
+                            Some(delimiter_match) => line[delimiter_match].to_string(),
+                            None => return Ok(true),
+                        };
 
-                            let metadata = if let Some(meta_str) = meta.to_owned() {
-                                TodoMetadata::from_string(meta_str)
-                            } else {
-                                TodoMetadata::empty()
-                            };
+                        let meta_capture = captures.get(2);
+                        let meta = match meta_capture {
+                            Some(meta_match) => Some(line[meta_match].to_string()),
+                            None => None,
+                        };
 
-                            match note {
-                                Some(note) => {
-                                    let todo = Todo {
-                                        path: entry.path().to_path_buf(),
-                                        line_number,
-                                        note,
-                                        meta,
-                                        metadata,
-                                    };
+                        let note_capture = captures.get(3);
+                        let note = match note_capture {
+                            Some(note_match) => Some(line[note_match].to_string()),
+                            None => None,
+                        };
 
-                                    matches.push(todo);
-                                }
-                                None => {}
+                        let metadata = if let Some(meta_str) = meta.to_owned() {
+                            TodoMetadata::from_string(meta_str)
+                        } else {
+                            TodoMetadata::empty()
+                        };
+
+                        match note {
+                            Some(note) => {
+                                let todo = Todo {
+                                    delimiter,
+                                    path: entry.path().to_path_buf(),
+                                    line_number,
+                                    note,
+                                    meta,
+                                    metadata,
+                                };
+
+                                matches.push(todo);
                             }
+                            None => {}
                         }
 
                         Ok(true)
@@ -626,6 +654,7 @@ fn main() -> Result<(), std::io::Error> {
                     note: item.note,
                     path: item.path,
                     line_number: item.line_number,
+                    delimiter: item.delimiter,
                 })
                 .collect();
 
@@ -652,6 +681,7 @@ fn main() -> Result<(), std::io::Error> {
                             note: item.note,
                             path: item.path,
                             line_number: item.line_number,
+                            delimiter: item.delimiter,
                         }
                     })
                     .collect();
@@ -678,6 +708,7 @@ fn main() -> Result<(), std::io::Error> {
                             note: item.note,
                             path: item.path,
                             line_number: item.line_number,
+                            delimiter: item.delimiter,
                         }
                     })
                     .collect();
@@ -704,6 +735,7 @@ fn main() -> Result<(), std::io::Error> {
                             note: item.note,
                             path: item.path,
                             line_number: item.line_number,
+                            delimiter: item.delimiter,
                         }
                     })
                     .collect();
@@ -733,6 +765,7 @@ fn main() -> Result<(), std::io::Error> {
                             note: item.note,
                             path: item.path,
                             line_number: item.line_number,
+                            delimiter: item.delimiter,
                         }
                     })
                     .collect();
@@ -759,6 +792,7 @@ fn main() -> Result<(), std::io::Error> {
                             note: item.note,
                             path: item.path,
                             line_number: item.line_number,
+                            delimiter: item.delimiter,
                         }
                     })
                     .collect();
@@ -785,6 +819,7 @@ fn main() -> Result<(), std::io::Error> {
                             note: item.note,
                             path: item.path,
                             line_number: item.line_number,
+                            delimiter: item.delimiter,
                         }
                     })
                     .collect();
@@ -811,6 +846,7 @@ fn main() -> Result<(), std::io::Error> {
                             note: item.note,
                             path: item.path,
                             line_number: item.line_number,
+                            delimiter: item.delimiter,
                         }
                     })
                     .collect();
@@ -840,6 +876,7 @@ fn main() -> Result<(), std::io::Error> {
                             note: item.note,
                             path: item.path,
                             line_number: item.line_number,
+                            delimiter: item.delimiter,
                         }
                     })
                     .collect();
@@ -866,6 +903,7 @@ fn main() -> Result<(), std::io::Error> {
                             note: item.note,
                             path: item.path,
                             line_number: item.line_number,
+                            delimiter: item.delimiter,
                         }
                     })
                     .collect();
@@ -895,6 +933,7 @@ fn main() -> Result<(), std::io::Error> {
                             note: item.note,
                             path: item.path,
                             line_number: item.line_number,
+                            delimiter: item.delimiter,
                         }
                     })
                     .collect();
@@ -921,6 +960,7 @@ fn main() -> Result<(), std::io::Error> {
                             note: item.note,
                             path: item.path,
                             line_number: item.line_number,
+                            delimiter: item.delimiter,
                         }
                     })
                     .collect();
@@ -950,6 +990,7 @@ fn main() -> Result<(), std::io::Error> {
                             note: item.note,
                             path: item.path,
                             line_number: item.line_number,
+                            delimiter: item.delimiter,
                         }
                     })
                     .collect();
