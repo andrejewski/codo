@@ -428,15 +428,12 @@ fn main() -> Result<(), ()> {
     for result in Walk::new("./") {
         match result {
             Ok(entry) => {
-                match entry.file_type() {
-                    Some(file_type) => {
-                        if !file_type.is_file() {
-                            continue;
-                        }
-                    }
-                    None => {
-                        continue;
-                    }
+                let is_file = entry
+                    .file_type()
+                    .and_then(|f| if f.is_file() { Some(()) } else { None });
+
+                if is_file == None {
+                    continue;
                 }
 
                 let search_result = searcher.search_path(
@@ -489,12 +486,9 @@ fn main() -> Result<(), ()> {
                     }),
                 );
 
-                match search_result {
-                    Ok(_) => {}
-                    Err(err) => {
-                        println!("ERROR: {}", err);
-                        return Err(());
-                    }
+                if let Err(err) = search_result {
+                    println!("ERROR: {}", err);
+                    return Err(());
                 }
             }
             Err(err) => {
