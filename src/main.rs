@@ -468,6 +468,84 @@ struct TodoUpdate {
     metadata: TodoMetadata,
 }
 
+struct LintErrorEntry {
+    todo: Todo,
+    errors: Vec<String>,
+}
+
+impl LintErrorEntry {
+    fn as_cli_result(&self) -> String {
+        let error_list = self
+            .errors
+            .to_owned()
+            .into_iter()
+            .map(|s| format!("\t- {}", s))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        format!("{}\n{}", self.todo.as_search_result(), error_list)
+    }
+}
+
+struct LintRules {
+    require_assignees: bool,
+    require_issues: bool,
+    require_due_dates: bool,
+
+    allowed_assignees: Option<Vec<String>>,
+    issue_format: Option<IssueFormat>,
+    issue_project_keys: Option<Vec<String>>,
+}
+
+fn get_lint_errors(todo: &Todo, lint_rules: &LintRules) -> Vec<String> {
+    let mut errors = vec![];
+
+    if lint_rules.require_assignees && todo.metadata.assignee.is_none() {
+        errors.push("Missing assignee");
+    }
+
+    if let Some(allowed) = &lint_rules.allowed_assignees {
+        if let Some(assignee) = &todo.metadata.assignee {
+            if !allowed.contains(&assignee) {
+                errors.push("Invalid assignee");
+            }
+        }
+    }
+
+    if lint_rules.require_issues && todo.metadata.issue.is_none() {
+        errors.push("Missing issue");
+    }
+
+    if let Some(issue) = todo.metadata.issue.to_owned() {
+        if let Some(format) = &lint_rules.issue_format {
+            let valid_format = match (format, issue.to_owned()) {
+                (IssueFormat::Numbered, Issue::Numbered(_)) => true,
+                (IssueFormat::ProjectKey, Issue::ProjectKey { .. }) => true,
+                _ => false,
+            };
+
+            if !valid_format {
+                errors.push("Invalid issue format");
+            }
+        }
+
+        if let Some(project_keys) = &lint_rules.issue_project_keys {
+            if let Issue::ProjectKey { project_key, .. } = issue {
+                if !project_keys.contains(&project_key) {
+                    errors.push("Invalid project key");
+                }
+            }
+        }
+    }
+
+    if lint_rules.require_due_dates && todo.metadata.due.is_none() {
+        errors.push("Missing due date");
+    }
+
+    errors.into_iter().map(|s| s.to_owned()).collect()
+}
+
+// TODO: Don't print "Err ()" on error
 fn main() -> Result<(), ()> {
     let matcher = match RegexMatcher::new(r"(?m)^\W*(//|/\*|#) (?:(?i)TODO)(?:\((.+)\))?:? (.+?)$")
     {
@@ -688,65 +766,38 @@ fn main() -> Result<(), ()> {
                 None
             };
 
-            let invalid_items: Vec<Todo> = matches
+            let lint_rules = LintRules {
+                require_assignees,
+                require_issues,
+                require_due_dates,
+                allowed_assignees,
+                issue_format,
+                issue_project_keys,
+            };
+
+            let lint_errors: Vec<LintErrorEntry> = matches
                 .into_iter()
-                .filter(|todo| {
-                    if require_assignees && todo.metadata.assignee.is_none() {
-                        return true;
+                .filter_map(|todo| {
+                    let errors = get_lint_errors(&todo, &lint_rules);
+                    if errors.is_empty() {
+                        None
+                    } else {
+                        Some(LintErrorEntry { todo, errors })
                     }
-
-                    if let Some(allowed) = &allowed_assignees {
-                        if let Some(assignee) = &todo.metadata.assignee {
-                            if !allowed.contains(&assignee) {
-                                return true;
-                            }
-                        }
-                    }
-
-                    if require_issues && todo.metadata.issue.is_none() {
-                        return true;
-                    }
-
-                    if let Some(issue) = todo.metadata.issue.to_owned() {
-                        if let Some(format) = &issue_format {
-                            let valid_format = match (format, issue.to_owned()) {
-                                (IssueFormat::Numbered, Issue::Numbered(_)) => true,
-                                (IssueFormat::ProjectKey, Issue::ProjectKey { .. }) => true,
-                                _ => false,
-                            };
-
-                            if !valid_format {
-                                return true;
-                            }
-                        }
-
-                        if let Some(project_keys) = &issue_project_keys {
-                            if let Issue::ProjectKey { project_key, .. } = issue {
-                                if !project_keys.contains(&project_key) {
-                                    return true;
-                                }
-                            }
-                        }
-                    }
-
-                    if require_due_dates && todo.metadata.due.is_none() {
-                        return true;
-                    }
-
-                    false
                 })
                 .collect();
 
-            if invalid_items.is_empty() {
-                println!("No TODO formatting errors found. Great job!")
+            if lint_errors.is_empty() {
+                println!("Lint errors (0): Great job!")
             } else {
                 println!(
-                    "{}",
-                    invalid_items
+                    "Lint errors ({}):\n\n{}",
+                    lint_errors.len(),
+                    lint_errors
                         .into_iter()
-                        .map(|t| t.as_search_result())
+                        .map(|t| t.as_cli_result())
                         .collect::<Vec<String>>()
-                        .join("\n"),
+                        .join("\n\n"),
                 );
                 return Err(());
             }
