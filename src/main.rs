@@ -38,8 +38,8 @@ impl Todo {
                 let metadata = TodoMetadata::from_string(meta.clone());
 
                 let mut info: Vec<String> = vec![];
-                if let Some(ticket) = metadata.ticket {
-                    info.push(format!("#{}", ticket))
+                if let Some(issue) = metadata.issue {
+                    info.push(format!("#{}", issue))
                 }
 
                 if let Some(assignee) = metadata.assignee {
@@ -73,7 +73,7 @@ impl Todo {
 
 struct TodoMetadata {
     assignee: Option<String>,
-    ticket: Option<String>,
+    issue: Option<String>,
     due: Option<String>,
 }
 
@@ -81,7 +81,7 @@ impl TodoMetadata {
     fn empty() -> Self {
         TodoMetadata {
             assignee: None,
-            ticket: None,
+            issue: None,
             due: None,
         }
     }
@@ -90,7 +90,7 @@ impl TodoMetadata {
         let date_format = Regex::new(r"[0-9]{4}-[0-9]{2}-[0-9]{2}").unwrap();
 
         let mut assignee: Option<String> = None;
-        let mut ticket: Option<String> = None;
+        let mut issue: Option<String> = None;
         let mut due: Option<String> = None;
 
         let parts: Vec<&str> = str.trim().split(',').map(|s| s.trim()).collect();
@@ -100,8 +100,8 @@ impl TodoMetadata {
                 continue;
             }
 
-            if part.starts_with('#') && ticket == None {
-                ticket = Some(part[1..].to_string());
+            if part.starts_with('#') && issue == None {
+                issue = Some(part[1..].to_string());
                 continue;
             }
 
@@ -112,7 +112,7 @@ impl TodoMetadata {
 
         TodoMetadata {
             assignee,
-            ticket,
+            issue,
             due,
         }
     }
@@ -130,7 +130,7 @@ struct Cli {
 enum Grouping {
     Assignee,
     Due,
-    Ticket,
+    Issue,
 }
 
 impl Grouping {
@@ -138,7 +138,7 @@ impl Grouping {
         match s {
             "assignee" => Some(Grouping::Assignee),
             "due" => Some(Grouping::Due),
-            "ticket" => Some(Grouping::Ticket),
+            "issue" => Some(Grouping::Issue),
             _ => None,
         }
     }
@@ -148,7 +148,7 @@ struct TodoFilters {
     assignee: Option<Vec<String>>,
     unassigned: bool,
 
-    ticket: Option<Vec<String>>,
+    issue: Option<Vec<String>>,
     untracked: bool,
 
     due: Option<Vec<String>>,
@@ -166,7 +166,7 @@ enum Commands {
         unassigned: bool,
 
         #[arg(long)]
-        ticket: Option<Vec<String>>,
+        issue: Option<Vec<String>>,
 
         #[arg(long)]
         untracked: bool,
@@ -188,7 +188,7 @@ enum Commands {
         unassigned: bool,
 
         #[arg(long)]
-        ticket: Option<Vec<String>>,
+        issue: Option<Vec<String>>,
 
         #[arg(long)]
         untracked: bool,
@@ -210,7 +210,7 @@ enum Commands {
         require_assignees: bool,
 
         #[arg(long)]
-        require_tickets: bool,
+        require_issues: bool,
 
         #[arg(long)]
         require_due_dates: bool,
@@ -227,21 +227,21 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum CodeMod {
-    RemoveTicket {
+    RemoveIssue {
         #[arg(long)]
-        ticket: String,
+        issue: String,
     },
-    RemoveAllTickets,
-    RenameTicket {
+    RemoveAllIssues,
+    RenameIssue {
         #[arg(long)]
         from: String,
 
         #[arg(long)]
         to: String,
     },
-    AddTicketForAllUntracked {
+    AddIssueForAllUntracked {
         #[arg(long)]
-        ticket: String,
+        issue: String,
     },
 
     RemoveAssignee {
@@ -261,9 +261,9 @@ enum CodeMod {
         assignee: String,
     },
 
-    AssignTicket {
+    AssignIssue {
         #[arg(long)]
-        ticket: String,
+        issue: String,
 
         #[arg(long)]
         assignee: String,
@@ -274,9 +274,9 @@ enum CodeMod {
         #[arg(long)]
         date: String,
     },
-    SetTicketDueDate {
+    SetIssueDueDate {
         #[arg(long)]
-        ticket: String,
+        issue: String,
 
         #[arg(long)]
         date: String,
@@ -313,8 +313,8 @@ fn filter_todo_list(list: Vec<Todo>, filters: TodoFilters) -> Vec<Todo> {
                 filters.assignee.to_owned(),
                 filters.unassigned,
             ) && filter_by_match(
-                todo.metadata.ticket.to_owned(),
-                filters.ticket.to_owned(),
+                todo.metadata.issue.to_owned(),
+                filters.issue.to_owned(),
                 filters.untracked,
             ) && filter_by_match(
                 todo.metadata.due.to_owned(),
@@ -339,8 +339,8 @@ fn filter_todo_list(list: Vec<Todo>, filters: TodoFilters) -> Vec<Todo> {
 
 fn make_metadata_str(metadata: TodoMetadata) -> Option<String> {
     let mut parts: Vec<String> = vec![];
-    if let Some(ticket) = metadata.ticket {
-        parts.push(format!("#{}", ticket))
+    if let Some(issue) = metadata.issue {
+        parts.push(format!("#{}", issue))
     }
 
     if let Some(assignee) = metadata.assignee {
@@ -501,7 +501,7 @@ fn main() -> Result<(), ()> {
     let cli = Cli::parse();
     let command = cli.command.unwrap_or(Commands::List {
         assignee: None,
-        ticket: None,
+        issue: None,
         due: None,
         untracked: false,
         unassigned: false,
@@ -513,7 +513,7 @@ fn main() -> Result<(), ()> {
         Commands::Stat {
             assignee,
             unassigned,
-            ticket,
+            issue,
             untracked,
             due,
             someday,
@@ -525,7 +525,7 @@ fn main() -> Result<(), ()> {
                 TodoFilters {
                     assignee,
                     unassigned,
-                    ticket,
+                    issue,
                     untracked,
                     due,
                     overdue,
@@ -543,8 +543,8 @@ fn main() -> Result<(), ()> {
                                 todo.metadata.assignee.unwrap_or("<unassigned>".to_string())
                             }
                             Grouping::Due => todo.metadata.due.unwrap_or("<someday>".to_string()),
-                            Grouping::Ticket => {
-                                todo.metadata.ticket.unwrap_or("<untracked>".to_string())
+                            Grouping::Issue => {
+                                todo.metadata.issue.unwrap_or("<untracked>".to_string())
                             }
                         };
 
@@ -578,7 +578,7 @@ fn main() -> Result<(), ()> {
         Commands::List {
             assignee,
             unassigned,
-            ticket,
+            issue,
             untracked,
             due,
             someday,
@@ -589,7 +589,7 @@ fn main() -> Result<(), ()> {
                 TodoFilters {
                     assignee,
                     unassigned,
-                    ticket,
+                    issue,
                     untracked,
                     due,
                     overdue,
@@ -613,7 +613,7 @@ fn main() -> Result<(), ()> {
         }
         Commands::Lint {
             require_assignees,
-            require_tickets,
+            require_issues,
             require_due_dates,
             allowed_assignees,
         } => {
@@ -630,7 +630,7 @@ fn main() -> Result<(), ()> {
                         } else {
                             true
                         }
-                        || require_tickets && todo.metadata.ticket == None
+                        || require_issues && todo.metadata.issue == None
                         || require_due_dates && todo.metadata.due == None
                 })
                 .collect();
@@ -669,13 +669,13 @@ fn main() -> Result<(), ()> {
             }
         }
         Commands::Mod { code_mod } => match code_mod {
-            CodeMod::RemoveTicket { ticket } => {
+            CodeMod::RemoveIssue { issue } => {
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
-                    .filter(|todo| todo.metadata.ticket == Some(ticket.to_owned()))
+                    .filter(|todo| todo.metadata.issue == Some(issue.to_owned()))
                     .map(|item| {
                         let new_metadata = TodoMetadata {
-                            ticket: None,
+                            issue: None,
                             ..item.metadata
                         };
 
@@ -690,20 +690,20 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs citing ticket \"{}\"", ticket);
+                    println!("No TODOs citing issue \"{}\"", issue);
                     return Err(());
                 } else {
                     apply_updates(updates);
-                    println!("All citations of ticket \"{}\" were removed.", ticket)
+                    println!("All citations of issue \"{}\" were removed.", issue)
                 }
             }
-            CodeMod::RemoveAllTickets => {
+            CodeMod::RemoveAllIssues => {
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
-                    .filter(|todo| todo.metadata.ticket != None)
+                    .filter(|todo| todo.metadata.issue != None)
                     .map(|item| {
                         let new_metadata = TodoMetadata {
-                            ticket: None,
+                            issue: None,
                             ..item.metadata
                         };
 
@@ -718,20 +718,20 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs citing any tickets");
+                    println!("No TODOs citing any issues");
                     return Err(());
                 } else {
                     apply_updates(updates);
-                    println!("All citations of tickets were removed.")
+                    println!("All citations of issues were removed.")
                 }
             }
-            CodeMod::RenameTicket { from, to } => {
+            CodeMod::RenameIssue { from, to } => {
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
-                    .filter(|todo| todo.metadata.ticket == Some(from.to_owned()))
+                    .filter(|todo| todo.metadata.issue == Some(from.to_owned()))
                     .map(|item| {
                         let new_metadata = TodoMetadata {
-                            ticket: Some(to.clone()),
+                            issue: Some(to.clone()),
                             ..item.metadata
                         };
 
@@ -746,23 +746,20 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs citing ticket \"{}\"", from);
+                    println!("No TODOs citing issue \"{}\"", from);
                     return Err(());
                 } else {
                     apply_updates(updates);
-                    println!(
-                        "All TODOs citing ticket \"{}\" assigned to \"{}\"",
-                        from, to
-                    )
+                    println!("All TODOs citing issue \"{}\" assigned to \"{}\"", from, to)
                 }
             }
-            CodeMod::AddTicketForAllUntracked { ticket } => {
+            CodeMod::AddIssueForAllUntracked { issue } => {
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
-                    .filter(|todo| todo.metadata.ticket == None)
+                    .filter(|todo| todo.metadata.issue == None)
                     .map(|item| {
                         let new_metadata = TodoMetadata {
-                            ticket: Some(ticket.clone()),
+                            issue: Some(issue.clone()),
                             ..item.metadata
                         };
 
@@ -781,7 +778,7 @@ fn main() -> Result<(), ()> {
                     return Err(());
                 } else {
                     apply_updates(updates);
-                    println!("All untracked TODOs now cite ticket \"{}\".", ticket)
+                    println!("All untracked TODOs now cite issue \"{}\".", issue)
                 }
             }
             CodeMod::RemoveAssignee { assignee } => {
@@ -899,10 +896,10 @@ fn main() -> Result<(), ()> {
                     println!("All unassigned TODOs assigned to \"{}\"", assignee)
                 }
             }
-            CodeMod::AssignTicket { ticket, assignee } => {
+            CodeMod::AssignIssue { issue, assignee } => {
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
-                    .filter(|todo| todo.metadata.ticket == Some(ticket.to_owned()))
+                    .filter(|todo| todo.metadata.issue == Some(issue.to_owned()))
                     .map(|item| {
                         let new_metadata = TodoMetadata {
                             assignee: Some(assignee.clone()),
@@ -920,13 +917,13 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs citing ticket \"{}\"", ticket);
+                    println!("No TODOs citing issue \"{}\"", issue);
                     return Err(());
                 } else {
                     apply_updates(updates);
                     println!(
-                        "All TODOs citing ticket \"{}\" assigned to \"{}\"",
-                        ticket, assignee
+                        "All TODOs citing issue \"{}\" assigned to \"{}\"",
+                        issue, assignee
                     )
                 }
             }
@@ -989,10 +986,10 @@ fn main() -> Result<(), ()> {
                     )
                 }
             }
-            CodeMod::SetTicketDueDate { ticket, date } => {
+            CodeMod::SetIssueDueDate { issue, date } => {
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
-                    .filter(|todo| todo.metadata.ticket == Some(ticket.to_owned()))
+                    .filter(|todo| todo.metadata.issue == Some(issue.to_owned()))
                     .map(|item| {
                         let new_metadata = TodoMetadata {
                             due: Some(date.clone()),
@@ -1010,13 +1007,13 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    println!("No TODOs citing ticket \"{}\"", ticket);
+                    println!("No TODOs citing issue \"{}\"", issue);
                     return Err(());
                 } else {
                     apply_updates(updates);
                     println!(
-                        "All TODO citing ticket \"{}\" to be due \"{}\".",
-                        ticket, date
+                        "All TODO citing issue \"{}\" to be due \"{}\".",
+                        issue, date
                     )
                 }
             }

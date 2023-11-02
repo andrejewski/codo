@@ -3,9 +3,9 @@
 // TODO: This is a multi word TODO
 // TODO(data): Example with data
 // TODO(@me): Example with assignee
-// TODO(#123, @me): Example with ticket A
-// TODO(#455): Example with ticket A
-// TODO(#444): Example with ticket B
+// TODO(#123, @me): Example with issue A
+// TODO(#455): Example with issue A
+// TODO(#444): Example with issue B
 // TODO(2023-12-12): Not yet due example
 // TODO(@chris, 2022-12-12): Overdue example
 /* TODO: Multi-line comment */
