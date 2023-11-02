@@ -39,7 +39,7 @@ impl Todo {
 
                 let mut info: Vec<String> = vec![];
                 if let Some(issue) = metadata.issue {
-                    info.push(format!("#{}", issue))
+                    info.push(format!("{}", issue.as_string()))
                 }
 
                 if let Some(assignee) = metadata.assignee {
@@ -73,8 +73,39 @@ impl Todo {
 
 struct TodoMetadata {
     assignee: Option<String>,
-    issue: Option<String>,
+    issue: Option<Issue>,
     due: Option<String>,
+}
+
+#[derive(Clone)]
+enum Issue {
+    Numbered(String),
+    ProjectKey(String),
+}
+
+impl Issue {
+    fn as_string(&self) -> String {
+        match self {
+            Issue::Numbered(s) => s.to_string(),
+            Issue::ProjectKey(s) => s.to_string(),
+        }
+    }
+}
+
+fn parse_issue(str: &str) -> Option<Issue> {
+    if let Ok(numbered) = Regex::new(r"^#[[:digit:]]+$") {
+        if numbered.is_match(&str) {
+            return Some(Issue::Numbered(str.to_owned()));
+        }
+    }
+
+    if let Ok(project_key) = Regex::new(r"^[A-Z][A-Z_0-9]*-[[:digit:]]+$") {
+        if project_key.is_match(&str) {
+            return Some(Issue::ProjectKey(str.to_owned()));
+        }
+    }
+
+    None
 }
 
 impl TodoMetadata {
@@ -90,7 +121,7 @@ impl TodoMetadata {
         let date_format = Regex::new(r"[0-9]{4}-[0-9]{2}-[0-9]{2}").unwrap();
 
         let mut assignee: Option<String> = None;
-        let mut issue: Option<String> = None;
+        let mut issue: Option<Issue> = None;
         let mut due: Option<String> = None;
 
         let parts: Vec<&str> = str.trim().split(',').map(|s| s.trim()).collect();
@@ -100,10 +131,7 @@ impl TodoMetadata {
                 continue;
             }
 
-            if part.starts_with('#') && issue == None {
-                issue = Some(part[1..].to_string());
-                continue;
-            }
+            issue = issue.or_else(|| parse_issue(part));
 
             if date_format.is_match(part) && due == None {
                 due = Some(part.to_string())
@@ -313,7 +341,7 @@ fn filter_todo_list(list: Vec<Todo>, filters: TodoFilters) -> Vec<Todo> {
                 filters.assignee.to_owned(),
                 filters.unassigned,
             ) && filter_by_match(
-                todo.metadata.issue.to_owned(),
+                todo.metadata.issue.as_ref().map(|i| i.as_string()),
                 filters.issue.to_owned(),
                 filters.untracked,
             ) && filter_by_match(
@@ -340,7 +368,7 @@ fn filter_todo_list(list: Vec<Todo>, filters: TodoFilters) -> Vec<Todo> {
 fn make_metadata_str(metadata: TodoMetadata) -> Option<String> {
     let mut parts: Vec<String> = vec![];
     if let Some(issue) = metadata.issue {
-        parts.push(format!("#{}", issue))
+        parts.push(format!("{}", issue.as_string()))
     }
 
     if let Some(assignee) = metadata.assignee {
@@ -543,9 +571,11 @@ fn main() -> Result<(), ()> {
                                 todo.metadata.assignee.unwrap_or("<unassigned>".to_string())
                             }
                             Grouping::Due => todo.metadata.due.unwrap_or("<someday>".to_string()),
-                            Grouping::Issue => {
-                                todo.metadata.issue.unwrap_or("<untracked>".to_string())
-                            }
+                            Grouping::Issue => todo
+                                .metadata
+                                .issue
+                                .map(|i| i.as_string())
+                                .unwrap_or("<untracked>".to_string()),
                         };
 
                         let count = map.get(&key).unwrap_or(&0);
@@ -630,8 +660,8 @@ fn main() -> Result<(), ()> {
                         } else {
                             true
                         }
-                        || require_issues && todo.metadata.issue == None
-                        || require_due_dates && todo.metadata.due == None
+                        || require_issues && todo.metadata.issue.is_none()
+                        || require_due_dates && todo.metadata.due.is_none()
                 })
                 .collect();
 
@@ -672,7 +702,10 @@ fn main() -> Result<(), ()> {
             CodeMod::RemoveIssue { issue } => {
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
-                    .filter(|todo| todo.metadata.issue == Some(issue.to_owned()))
+                    .filter(|todo| {
+                        todo.metadata.issue.as_ref().map(|i| i.as_string())
+                            == Some(issue.to_owned())
+                    })
                     .map(|item| {
                         let new_metadata = TodoMetadata {
                             issue: None,
@@ -700,7 +733,7 @@ fn main() -> Result<(), ()> {
             CodeMod::RemoveAllIssues => {
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
-                    .filter(|todo| todo.metadata.issue != None)
+                    .filter(|todo| !todo.metadata.issue.is_none())
                     .map(|item| {
                         let new_metadata = TodoMetadata {
                             issue: None,
@@ -726,12 +759,19 @@ fn main() -> Result<(), ()> {
                 }
             }
             CodeMod::RenameIssue { from, to } => {
+                let to_issue = parse_issue(&to).ok_or_else(|| {
+                    println!("Invalid replacement issue \"{}\"", to);
+                    ()
+                })?;
+
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
-                    .filter(|todo| todo.metadata.issue == Some(from.to_owned()))
+                    .filter(|todo| {
+                        todo.metadata.issue.as_ref().map(|i| i.as_string()) == Some(from.to_owned())
+                    })
                     .map(|item| {
                         let new_metadata = TodoMetadata {
-                            issue: Some(to.clone()),
+                            issue: Some(to_issue.to_owned()),
                             ..item.metadata
                         };
 
@@ -754,12 +794,17 @@ fn main() -> Result<(), ()> {
                 }
             }
             CodeMod::AddIssueForAllUntracked { issue } => {
+                let valid_issue = parse_issue(&issue).ok_or_else(|| {
+                    println!("Invalid replacement issue \"{}\"", issue);
+                    ()
+                })?;
+
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
-                    .filter(|todo| todo.metadata.issue == None)
+                    .filter(|todo| todo.metadata.issue.is_none())
                     .map(|item| {
                         let new_metadata = TodoMetadata {
-                            issue: Some(issue.clone()),
+                            issue: Some(valid_issue.to_owned()),
                             ..item.metadata
                         };
 
@@ -899,7 +944,10 @@ fn main() -> Result<(), ()> {
             CodeMod::AssignIssue { issue, assignee } => {
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
-                    .filter(|todo| todo.metadata.issue == Some(issue.to_owned()))
+                    .filter(|todo| {
+                        todo.metadata.issue.as_ref().map(|i| i.as_string())
+                            == Some(issue.to_owned())
+                    })
                     .map(|item| {
                         let new_metadata = TodoMetadata {
                             assignee: Some(assignee.clone()),
@@ -989,7 +1037,10 @@ fn main() -> Result<(), ()> {
             CodeMod::SetIssueDueDate { issue, date } => {
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
-                    .filter(|todo| todo.metadata.issue == Some(issue.to_owned()))
+                    .filter(|todo| {
+                        todo.metadata.issue.as_ref().map(|i| i.as_string())
+                            == Some(issue.to_owned())
+                    })
                     .map(|item| {
                         let new_metadata = TodoMetadata {
                             due: Some(date.clone()),
