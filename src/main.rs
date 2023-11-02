@@ -77,17 +77,35 @@ struct TodoMetadata {
     due: Option<String>,
 }
 
+enum IssueFormat {
+    Numbered,
+    ProjectKey,
+}
+
+impl IssueFormat {
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "numbered" => Some(IssueFormat::Numbered),
+            "project-key" => Some(IssueFormat::ProjectKey),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone)]
 enum Issue {
     Numbered(String),
-    ProjectKey(String),
+    ProjectKey { project_key: String, number: String },
 }
 
 impl Issue {
     fn as_string(&self) -> String {
         match self {
             Issue::Numbered(s) => s.to_string(),
-            Issue::ProjectKey(s) => s.to_string(),
+            Issue::ProjectKey {
+                project_key,
+                number,
+            } => format!("{}-{}", project_key, number),
         }
     }
 }
@@ -99,10 +117,14 @@ fn parse_issue(str: &str) -> Option<Issue> {
         }
     }
 
-    if let Ok(project_key) = Regex::new(r"^[A-Z][A-Z_0-9]*-[[:digit:]]+$") {
-        if project_key.is_match(&str) {
-            return Some(Issue::ProjectKey(str.to_owned()));
-        }
+    if let Ok(project_key) = Regex::new(r"^([A-Z][A-Z_0-9]*)-([[:digit:]]+)$") {
+        let captures = project_key.captures(str)?;
+        let (_, [project_key, number]) = captures.extract();
+
+        return Some(Issue::ProjectKey {
+            project_key: project_key.to_string(),
+            number: number.to_string(),
+        });
     }
 
     None
@@ -245,6 +267,12 @@ enum Commands {
 
         #[arg(long)]
         allowed_assignees: Option<Vec<String>>,
+
+        #[arg(long)]
+        issue_format: Option<String>,
+
+        #[arg(long)]
+        issue_project_keys: Option<Vec<String>>,
     },
     Fmt,
     Mod {
@@ -646,26 +674,72 @@ fn main() -> Result<(), ()> {
             require_issues,
             require_due_dates,
             allowed_assignees,
+            issue_format,
+            issue_project_keys,
         } => {
+            let issue_format = if let Some(input_format) = issue_format {
+                if let Some(valid_format) = IssueFormat::from_str(&input_format) {
+                    Some(valid_format)
+                } else {
+                    println!("Issue format invalid: \"{}\"", input_format);
+                    return Err(());
+                }
+            } else {
+                None
+            };
+
             let invalid_items: Vec<Todo> = matches
                 .into_iter()
                 .filter(|todo| {
-                    require_assignees && todo.metadata.assignee == None
-                        || if let Some(allowed) = &allowed_assignees {
-                            if let Some(assignee) = &todo.metadata.assignee {
-                                allowed.contains(&assignee)
-                            } else {
-                                false
+                    if require_assignees && todo.metadata.assignee.is_none() {
+                        return true;
+                    }
+
+                    if let Some(allowed) = &allowed_assignees {
+                        if let Some(assignee) = &todo.metadata.assignee {
+                            if !allowed.contains(&assignee) {
+                                return true;
                             }
-                        } else {
-                            true
                         }
-                        || require_issues && todo.metadata.issue.is_none()
-                        || require_due_dates && todo.metadata.due.is_none()
+                    }
+
+                    if require_issues && todo.metadata.issue.is_none() {
+                        return true;
+                    }
+
+                    if let Some(issue) = todo.metadata.issue.to_owned() {
+                        if let Some(format) = &issue_format {
+                            let valid_format = match (format, issue.to_owned()) {
+                                (IssueFormat::Numbered, Issue::Numbered(_)) => true,
+                                (IssueFormat::ProjectKey, Issue::ProjectKey { .. }) => true,
+                                _ => false,
+                            };
+
+                            if !valid_format {
+                                return true;
+                            }
+                        }
+
+                        if let Some(project_keys) = &issue_project_keys {
+                            if let Issue::ProjectKey { project_key, .. } = issue {
+                                if !project_keys.contains(&project_key) {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+
+                    if require_due_dates && todo.metadata.due.is_none() {
+                        return true;
+                    }
+
+                    false
                 })
                 .collect();
 
             if invalid_items.is_empty() {
+                println!("No TODO formatting errors found. Great job!")
+            } else {
                 println!(
                     "{}",
                     invalid_items
@@ -673,9 +747,8 @@ fn main() -> Result<(), ()> {
                         .map(|t| t.as_search_result())
                         .collect::<Vec<String>>()
                         .join("\n"),
-                )
-            } else {
-                println!("No TODO formatting errors found. Great job!")
+                );
+                return Err(());
             }
         }
         Commands::Fmt => {
