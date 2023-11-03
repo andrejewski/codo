@@ -24,7 +24,7 @@ Codo-style TODO comments have these shapes:
 // TODO(#123, @chris, 2023-11-01): Example of all three metadata pieces
 ```
 
-Don't worry about the syntax too much though, `codo fmt` and `codo lint` as shown below will keep up the hygiene.
+Don't worry about the syntax too much though, `codo format` and `codo lint` as shown below will keep up the hygiene.
 
 ## Basic commands
 
@@ -57,7 +57,7 @@ code stat --group-by=assignee
 ### Format TODOs
 
 ```sh
-codo fmt
+codo format
 ```
 
 This command rewrites TODO comments into proper form. For examples:

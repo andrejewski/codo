@@ -275,8 +275,7 @@ enum Commands {
         #[arg(long)]
         issue_project_keys: Option<Vec<String>>,
     },
-    // TODO: Rename to `format`
-    Fmt,
+    Format,
     Mod {
         #[command(subcommand)]
         code_mod: CodeMod,
@@ -797,7 +796,7 @@ fn main() -> Result<(), ()> {
                 ));
             }
         }
-        Commands::Fmt => {
+        Commands::Format => {
             let updates: Vec<TodoUpdate> = matches
                 .into_iter()
                 .map(|item| TodoUpdate {
