@@ -170,6 +170,7 @@ impl TodoMetadata {
 
 use clap::{Parser, Subcommand};
 
+// TODO: add --path= option
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
@@ -274,6 +275,7 @@ enum Commands {
         #[arg(long)]
         issue_project_keys: Option<Vec<String>>,
     },
+    // TODO: Rename to `format`
     Fmt,
     Mod {
         #[command(subcommand)]
@@ -741,6 +743,7 @@ fn main() -> Result<(), ()> {
                 );
             }
         }
+        // TODO: Print format differences as lint errors
         Commands::Lint {
             require_assignees,
             require_issues,

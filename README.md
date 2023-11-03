@@ -87,7 +87,7 @@ A great tool to add to your CI pipeline to force consistency.
 
 ### Various code mods
 
-Lastly we have various code mods you can use to manipulate TODOs. Some cool ones:
+There are code mods you can use to manipulate TODOs. Some cool ones:
 
 ```sh
 # Assign all TODOs which lack an issue with issue #123
