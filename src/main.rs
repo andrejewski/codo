@@ -9,7 +9,6 @@ use grep::matcher::{Captures, Matcher};
 use grep::regex::RegexMatcher;
 use grep::searcher::sinks::UTF8;
 use grep::searcher::Searcher;
-use ignore::Walk;
 use regex::Regex;
 
 struct Todo {
@@ -170,10 +169,12 @@ impl TodoMetadata {
 
 use clap::{Parser, Subcommand};
 
-// TODO: add --path= option
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    #[arg(long)]
+    path: Option<Vec<String>>,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -558,7 +559,18 @@ fn main() -> Result<(), ()> {
     let mut matches: Vec<Todo> = vec![];
     let mut searcher = Searcher::new();
 
-    for result in Walk::new("./") {
+    let cli = Cli::parse();
+
+    let mut paths = cli.path.unwrap_or(vec!["./".to_owned()]);
+    let primary_path = paths.remove(0);
+    let mut walk_builder = ignore::WalkBuilder::new(primary_path);
+    for path in paths {
+        walk_builder.add(path);
+    }
+
+    let walk = walk_builder.build();
+
+    for result in walk {
         match result {
             Ok(entry) => {
                 let is_file = entry
@@ -629,7 +641,6 @@ fn main() -> Result<(), ()> {
         }
     }
 
-    let cli = Cli::parse();
     let command = cli.command.unwrap_or(Commands::List {
         assignee: None,
         issue: None,
