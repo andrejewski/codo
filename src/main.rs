@@ -545,19 +545,14 @@ fn get_lint_errors(todo: &Todo, lint_rules: &LintRules) -> Vec<String> {
     errors.into_iter().map(|s| s.to_owned()).collect()
 }
 
-fn cli_error(error: String) -> Result<(), ()> {
+fn cli_error(error: String) -> ! {
     eprintln!("{}", error);
     std::process::exit(1);
 }
 
 fn main() -> Result<(), ()> {
-    let matcher = match RegexMatcher::new(r"(?m)^\W*(//|/\*|#) (?:(?i)TODO)(?:\((.+)\))?:? (.+?)$")
-    {
-        Ok(matcher) => matcher,
-        Err(error) => {
-            return cli_error(format!("{}", error));
-        }
-    };
+    let matcher = RegexMatcher::new(r"(?m)^\W*(//|/\*|#) (?:(?i)TODO)(?:\((.+)\))?:? (.+?)$")
+        .map_err(|e| cli_error(format!("{}", e)))?;
 
     let mut matches: Vec<Todo> = vec![];
     let mut searcher = Searcher::new();
@@ -624,11 +619,11 @@ fn main() -> Result<(), ()> {
                 );
 
                 if let Err(err) = search_result {
-                    return cli_error(format!("{}", err));
+                    cli_error(format!("{}", err));
                 }
             }
             Err(err) => {
-                return cli_error(format!("{}", err));
+                cli_error(format!("{}", err));
             }
         }
     }
@@ -705,7 +700,7 @@ fn main() -> Result<(), ()> {
                             .join("\n")
                     )
                 } else {
-                    return cli_error(format!("--group-by={} not supported", group_by));
+                    cli_error(format!("--group-by={} not supported", group_by));
                 }
             } else {
                 println!("{}", results.len())
@@ -734,7 +729,7 @@ fn main() -> Result<(), ()> {
             );
 
             if results.is_empty() {
-                return cli_error("<no TODOs>".to_owned());
+                cli_error("<no TODOs>".to_owned());
             } else {
                 println!(
                     "{}",
@@ -758,7 +753,7 @@ fn main() -> Result<(), ()> {
                 if let Some(valid_format) = IssueFormat::from_str(&input_format) {
                     Some(valid_format)
                 } else {
-                    return cli_error(format!("Issue format invalid: \"{}\"", input_format));
+                    cli_error(format!("Issue format invalid: \"{}\"", input_format));
                 }
             } else {
                 None
@@ -788,7 +783,7 @@ fn main() -> Result<(), ()> {
             if lint_errors.is_empty() {
                 println!("Lint errors (0): Great job!")
             } else {
-                return cli_error(format!(
+                cli_error(format!(
                     "Lint errors ({}):\n\n{}",
                     lint_errors.len(),
                     lint_errors
@@ -812,7 +807,7 @@ fn main() -> Result<(), ()> {
                 .collect();
 
             if updates.is_empty() {
-                return cli_error("No TODOs found".to_owned());
+                cli_error("No TODOs found".to_owned());
             } else {
                 apply_updates(updates);
                 println!("TODOs formatted.")
@@ -843,7 +838,7 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    return cli_error(format!("No TODOs citing issue \"{}\"", issue));
+                    cli_error(format!("No TODOs citing issue \"{}\"", issue));
                 } else {
                     apply_updates(updates);
                     println!("All citations of issue \"{}\" were removed.", issue)
@@ -870,16 +865,15 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    return cli_error("No TODOs citing any issues".to_owned());
+                    cli_error("No TODOs citing any issues".to_owned());
                 } else {
                     apply_updates(updates);
                     println!("All citations of issues were removed.")
                 }
             }
             CodeMod::RenameIssue { from, to } => {
-                let to_issue = parse_issue(&to).ok_or_else(|| {
-                    cli_error(format!("Invalid replacement issue \"{}\"", to)).unwrap_err()
-                })?;
+                let to_issue = parse_issue(&to)
+                    .ok_or_else(|| cli_error(format!("Invalid replacement issue \"{}\"", to)))?;
 
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
@@ -903,16 +897,15 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    return cli_error(format!("No TODOs citing issue \"{}\"", from));
+                    cli_error(format!("No TODOs citing issue \"{}\"", from));
                 } else {
                     apply_updates(updates);
                     println!("All TODOs citing issue \"{}\" assigned to \"{}\"", from, to)
                 }
             }
             CodeMod::AddIssueForAllUntracked { issue } => {
-                let valid_issue = parse_issue(&issue).ok_or_else(|| {
-                    cli_error(format!("Invalid issue \"{}\"", issue)).unwrap_err()
-                })?;
+                let valid_issue = parse_issue(&issue)
+                    .ok_or_else(|| cli_error(format!("Invalid issue \"{}\"", issue)))?;
 
                 let updates: Vec<TodoUpdate> = matches
                     .into_iter()
@@ -934,7 +927,7 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    return cli_error("No TODOs untracked".to_owned());
+                    cli_error("No TODOs untracked".to_owned());
                 } else {
                     apply_updates(updates);
                     println!("All untracked TODOs now cite issue \"{}\".", issue)
@@ -961,7 +954,7 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    return cli_error(format!("No TODOs assigned to \"{}\"", assignee));
+                    cli_error(format!("No TODOs assigned to \"{}\"", assignee));
                 } else {
                     apply_updates(updates);
                     println!("All TODOs assigned to \"{}\" were unassigned.", assignee)
@@ -988,7 +981,7 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    return cli_error("No TODOs assigned".to_owned());
+                    cli_error("No TODOs assigned".to_owned());
                 } else {
                     apply_updates(updates);
                     println!("All TODOs were unassigned.")
@@ -1015,7 +1008,7 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    return cli_error(format!("No TODOs assigned to \"{}\"", from));
+                    cli_error(format!("No TODOs assigned to \"{}\"", from));
                 } else {
                     apply_updates(updates);
                     println!(
@@ -1045,7 +1038,7 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    return cli_error("No TODOs unassigned".to_owned());
+                    cli_error("No TODOs unassigned".to_owned());
                 } else {
                     apply_updates(updates);
                     println!("All unassigned TODOs assigned to \"{}\"", assignee)
@@ -1075,7 +1068,7 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    return cli_error(format!("No TODOs citing issue \"{}\"", issue));
+                    cli_error(format!("No TODOs citing issue \"{}\"", issue));
                 } else {
                     apply_updates(updates);
                     println!(
@@ -1105,7 +1098,7 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    return cli_error("No TODOs with due dates".to_owned());
+                    cli_error("No TODOs with due dates".to_owned());
                 } else {
                     apply_updates(updates);
                     println!("All TODO due dates were removed.")
@@ -1132,7 +1125,7 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    return cli_error("No TODOs without due dates".to_owned());
+                    cli_error("No TODOs without due dates".to_owned());
                 } else {
                     apply_updates(updates);
                     println!(
@@ -1165,7 +1158,7 @@ fn main() -> Result<(), ()> {
                     .collect();
 
                 if updates.is_empty() {
-                    return cli_error(format!("No TODOs citing issue \"{}\"", issue));
+                    cli_error(format!("No TODOs citing issue \"{}\"", issue));
                 } else {
                     apply_updates(updates);
                     println!(
