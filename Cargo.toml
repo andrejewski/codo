@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Chris Andrejewski <christopher.andrejewski@gmail.com>"]
 description = "Code comment TODO tool"
 readme = "README.md"
+license = "MIT"
 homepage = "https://github.com/andrejewski/codo"
 repository = "https://github.com/andrejewski/codo"
 keywords = ["cli", "todo", "issue", "linter", "formatter"]
