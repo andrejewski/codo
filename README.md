@@ -71,7 +71,7 @@ This command rewrites TODO comments into proper form. For examples:
 
 All get formatted to `// TODO: example`. Version control is highly recommended, especially when running this command as it modifies files in-place.
 
-### Linting TODOs
+### Validate TODOs
 
 Have TODO hygiene you'd like to enforce? This command is for you:
 
@@ -82,8 +82,32 @@ codo validate
   --require-issues
 ```
 
-This command will return a non-zero exit status and print out validation errors.
-A great tool to add to your CI pipeline to force consistency.
+This command will return a non-zero exit status and print out validation errors if there are any.
+A great tool to add to your pre-push/commit hooks and CI pipeline to force consistency.
+
+### Export TODOs
+
+```sh
+codo export json
+```
+
+Prints out JSON in this shape:
+
+```json
+{
+  "version": "<current code version>",
+  "todos": [
+    {
+       "assignee": "chris",
+        "due": "2023-11-01",
+        "issue": "#123",
+        "line": 42,
+        "note": "This is an example",
+        "path": "./README.md"
+    }
+  ]
+}
+```
 
 ### Various code mods
 

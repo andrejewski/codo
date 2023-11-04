@@ -21,17 +21,21 @@ struct Todo {
     metadata: TodoMetadata,
 }
 
+fn get_printable_note(delimiter: &String, note: &String) -> String {
+    if delimiter == "/*" {
+        if let Some(stripped_note) = note.strip_suffix("*/") {
+            stripped_note.to_string()
+        } else {
+            note.to_owned()
+        }
+    } else {
+        note.to_owned()
+    }
+}
+
 impl Todo {
     fn as_search_result(&self) -> String {
-        let note: String = if self.delimiter == "/*" {
-            if let Some(stripped_note) = self.note.strip_suffix("*/") {
-                stripped_note.to_string()
-            } else {
-                self.note.to_owned()
-            }
-        } else {
-            self.note.to_owned()
-        };
+        let note: String = get_printable_note(&self.delimiter, &self.note);
 
         match self.meta.to_owned() {
             Some(meta) => {
@@ -170,6 +174,7 @@ impl TodoMetadata {
 }
 
 use clap::{Parser, Subcommand};
+use serde_json::Value;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -279,10 +284,21 @@ enum Commands {
         issue_project_keys: Option<Vec<String>>,
     },
     Format,
+    Export {
+        #[command(subcommand)]
+        medium: ExportMedium,
+    },
     Mod {
         #[command(subcommand)]
         code_mod: CodeMod,
     },
+}
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[derive(Subcommand)]
+enum ExportMedium {
+    Json,
 }
 
 #[derive(Subcommand)]
@@ -839,6 +855,34 @@ fn main() -> Result<(), ()> {
                 println!("TODOs formatted.")
             }
         }
+        Commands::Export { medium } => match medium {
+            ExportMedium::Json => {
+                let todo_items: Vec<serde_json::Value> = matches
+                    .into_iter()
+                    .map(|todo| {
+                        serde_json::json!({
+                            "path": todo.path.to_str(),
+                            "line": todo.line_number,
+                            "note": get_printable_note(&todo.delimiter, &todo.note),
+                            "issue": todo.metadata.issue.map(|f| f.as_string()),
+                            "assignee": todo.metadata.assignee,
+                            "due": todo.metadata.due,
+                        })
+                    })
+                    .collect();
+
+                let mut doc = ::serde_json::Map::<String, Value>::new();
+                doc.insert("version".to_owned(), Value::String(VERSION.to_owned()));
+                doc.insert("todos".to_owned(), Value::Array(todo_items));
+
+                let json_doc = Value::Object(doc);
+
+                let output_str = serde_json::ser::to_string_pretty(&json_doc)
+                    .or_else(|e| cli_error(format!("Failed to print JSON: {}", e)))?;
+
+                println!("{}", output_str);
+            }
+        },
         Commands::Mod { code_mod } => match code_mod {
             CodeMod::RemoveIssue { issue } => {
                 let updates: Vec<TodoUpdate> = matches
