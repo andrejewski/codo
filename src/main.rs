@@ -259,7 +259,7 @@ enum Commands {
         #[arg(long)]
         group_by: Option<String>,
     },
-    Lint {
+    Validate {
         #[arg(long)]
         require_assignees: bool,
 
@@ -475,12 +475,12 @@ struct TodoUpdate {
     metadata: TodoMetadata,
 }
 
-struct LintErrorEntry {
+struct ValidationErrorEntry {
     todo: Todo,
     errors: Vec<String>,
 }
 
-impl LintErrorEntry {
+impl ValidationErrorEntry {
     fn as_cli_result(&self) -> String {
         let error_list = self
             .errors
@@ -494,7 +494,7 @@ impl LintErrorEntry {
     }
 }
 
-struct LintRules {
+struct ValidationRules {
     require_assignees: bool,
     require_issues: bool,
     require_due_dates: bool,
@@ -504,7 +504,7 @@ struct LintRules {
     issue_project_keys: Option<Vec<String>>,
 }
 
-fn get_lint_errors(todo: &Todo, lint_rules: &LintRules) -> Vec<String> {
+fn get_validation_errors(todo: &Todo, validation_rules: &ValidationRules) -> Vec<String> {
     let mut errors = vec![];
 
     let formatted = format_todo_update(&todo.delimiter, &todo.note, todo.metadata.to_owned());
@@ -512,11 +512,11 @@ fn get_lint_errors(todo: &Todo, lint_rules: &LintRules) -> Vec<String> {
         errors.push("Invalid format");
     }
 
-    if lint_rules.require_assignees && todo.metadata.assignee.is_none() {
+    if validation_rules.require_assignees && todo.metadata.assignee.is_none() {
         errors.push("Missing assignee");
     }
 
-    if let Some(allowed) = &lint_rules.allowed_assignees {
+    if let Some(allowed) = &validation_rules.allowed_assignees {
         if let Some(assignee) = &todo.metadata.assignee {
             if !allowed.contains(&assignee) {
                 errors.push("Invalid assignee");
@@ -524,12 +524,12 @@ fn get_lint_errors(todo: &Todo, lint_rules: &LintRules) -> Vec<String> {
         }
     }
 
-    if lint_rules.require_issues && todo.metadata.issue.is_none() {
+    if validation_rules.require_issues && todo.metadata.issue.is_none() {
         errors.push("Missing issue");
     }
 
     if let Some(issue) = todo.metadata.issue.to_owned() {
-        if let Some(format) = &lint_rules.issue_format {
+        if let Some(format) = &validation_rules.issue_format {
             let valid_format = match (format, issue.to_owned()) {
                 (IssueFormat::Numbered, Issue::Numbered(_)) => true,
                 (IssueFormat::ProjectKey, Issue::ProjectKey { .. }) => true,
@@ -541,7 +541,7 @@ fn get_lint_errors(todo: &Todo, lint_rules: &LintRules) -> Vec<String> {
             }
         }
 
-        if let Some(project_keys) = &lint_rules.issue_project_keys {
+        if let Some(project_keys) = &validation_rules.issue_project_keys {
             if let Issue::ProjectKey { project_key, .. } = issue {
                 if !project_keys.contains(&project_key) {
                     errors.push("Invalid project key");
@@ -550,7 +550,7 @@ fn get_lint_errors(todo: &Todo, lint_rules: &LintRules) -> Vec<String> {
         }
     }
 
-    if lint_rules.require_due_dates && todo.metadata.due.is_none() {
+    if validation_rules.require_due_dates && todo.metadata.due.is_none() {
         errors.push("Missing due date");
     }
 
@@ -767,7 +767,7 @@ fn main() -> Result<(), ()> {
                 );
             }
         }
-        Commands::Lint {
+        Commands::Validate {
             require_assignees,
             require_issues,
             require_due_dates,
@@ -785,7 +785,7 @@ fn main() -> Result<(), ()> {
                 None
             };
 
-            let lint_rules = LintRules {
+            let validation_rules = ValidationRules {
                 require_assignees,
                 require_issues,
                 require_due_dates,
@@ -794,25 +794,25 @@ fn main() -> Result<(), ()> {
                 issue_project_keys,
             };
 
-            let lint_errors: Vec<LintErrorEntry> = matches
+            let validation_errors: Vec<ValidationErrorEntry> = matches
                 .into_iter()
                 .filter_map(|todo| {
-                    let errors = get_lint_errors(&todo, &lint_rules);
+                    let errors = get_validation_errors(&todo, &validation_rules);
                     if errors.is_empty() {
                         None
                     } else {
-                        Some(LintErrorEntry { todo, errors })
+                        Some(ValidationErrorEntry { todo, errors })
                     }
                 })
                 .collect();
 
-            if lint_errors.is_empty() {
-                println!("Lint errors (0): Great job!")
+            if validation_errors.is_empty() {
+                println!("Validation errors (0): Great job!")
             } else {
                 cli_error(format!(
-                    "Lint errors ({}):\n\n{}",
-                    lint_errors.len(),
-                    lint_errors
+                    "Validation errors ({}):\n\n{}",
+                    validation_errors.len(),
+                    validation_errors
                         .into_iter()
                         .map(|t| t.as_cli_result())
                         .collect::<Vec<String>>()

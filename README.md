@@ -1,7 +1,7 @@
 # Codo
 > The code comment TODO tool
 
-Make TODO comments powerful with Codo, a command-line tool to search, manage, format, and lint your codebase's TODO comments.
+Make TODO comments powerful with Codo, a command-line tool to search, manage, format, and validate your codebase's TODO comments.
 
 ## Installation
 
@@ -24,7 +24,7 @@ Codo-style TODO comments have these shapes:
 // TODO(#123, @chris, 2023-11-01): Example of all three metadata pieces
 ```
 
-Don't worry about the syntax too much though, `codo format` and `codo lint` as shown below will keep up the hygiene.
+Don't worry about the syntax too much though, `codo format` and `codo validate` as shown below will keep up the hygiene.
 
 ## Basic commands
 
@@ -76,13 +76,13 @@ All get formatted to `// TODO: example`. Version control is highly recommended, 
 Have TODO hygiene you'd like to enforce? This command is for you:
 
 ```sh
-codo lint
+codo validate
   --require-assignees
   --require-due-dates
   --require-issues
 ```
 
-This command will return a non-zero exit status and print out lint errors.
+This command will return a non-zero exit status and print out validation errors.
 A great tool to add to your CI pipeline to force consistency.
 
 ### Various code mods
