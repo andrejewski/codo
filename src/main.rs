@@ -12,6 +12,7 @@ use grep::searcher::Searcher;
 use regex::Regex;
 
 struct Todo {
+    raw: String,
     delimiter: String,
     path: PathBuf,
     line_number: u64,
@@ -70,6 +71,7 @@ impl Todo {
     }
 }
 
+#[derive(Clone)]
 struct TodoMetadata {
     assignee: Option<String>,
     issue: Option<Issue>,
@@ -416,6 +418,14 @@ fn make_metadata_str(metadata: TodoMetadata) -> Option<String> {
     }
 }
 
+fn format_todo_update(delimiter: &String, note: &String, metadata: TodoMetadata) -> String {
+    if let Some(meta) = make_metadata_str(metadata) {
+        format!("{} TODO({}): {}", delimiter, meta, note)
+    } else {
+        format!("{} TODO: {}", delimiter, note)
+    }
+}
+
 fn apply_updates(updates: Vec<TodoUpdate>) {
     let mut file_updates: HashMap<PathBuf, HashMap<u64, TodoUpdate>> = HashMap::new();
     for update in updates.into_iter() {
@@ -434,17 +444,12 @@ fn apply_updates(updates: Vec<TodoUpdate>) {
                 if let Ok(line) = line_result {
                     let new_line = if let Some(update) = line_updates.remove(&(num as u64)) {
                         let leading_whitespace = line.split(&update.delimiter).nth(0).unwrap_or("");
-                        if let Some(meta) = make_metadata_str(update.metadata) {
-                            format!(
-                                "{}{} TODO({}): {}",
-                                leading_whitespace, update.delimiter, meta, update.note
-                            )
-                        } else {
-                            format!(
-                                "{}{} TODO: {}",
-                                leading_whitespace, update.delimiter, update.note
-                            )
-                        }
+
+                        format!(
+                            "{}{}",
+                            leading_whitespace,
+                            format_todo_update(&update.delimiter, &update.note, update.metadata)
+                        )
                     } else {
                         line
                     };
@@ -501,6 +506,11 @@ struct LintRules {
 
 fn get_lint_errors(todo: &Todo, lint_rules: &LintRules) -> Vec<String> {
     let mut errors = vec![];
+
+    let formatted = format_todo_update(&todo.delimiter, &todo.note, todo.metadata.to_owned());
+    if todo.raw != formatted {
+        errors.push("Invalid format");
+    }
 
     if lint_rules.require_assignees && todo.metadata.assignee.is_none() {
         errors.push("Missing assignee");
@@ -593,8 +603,11 @@ fn main() -> Result<(), ()> {
                         }
 
                         let delimiter_capture = captures.get(1);
-                        let delimiter = match delimiter_capture {
-                            Some(delimiter_match) => line[delimiter_match].to_string(),
+                        let (raw, delimiter) = match delimiter_capture {
+                            Some(delimiter_match) => (
+                                line[delimiter_match.start()..(line.len() - 1)].to_owned(),
+                                line[delimiter_match].to_string(),
+                            ),
                             None => return Ok(true),
                         };
 
@@ -617,6 +630,7 @@ fn main() -> Result<(), ()> {
                         };
 
                         let todo = Todo {
+                            raw,
                             delimiter,
                             path: entry.path().to_path_buf(),
                             line_number,
@@ -753,7 +767,6 @@ fn main() -> Result<(), ()> {
                 );
             }
         }
-        // TODO: Print format differences as lint errors
         Commands::Lint {
             require_assignees,
             require_issues,
