@@ -48,10 +48,10 @@ codo list --assignee=chris
 
 ```sh
 # Get total TODO count 
-code stat
+codo stat
 
 # Get TODO count by assignee
-code stat --group-by=assignee
+codo stat --group-by=assignee
 ```
 
 ### Format TODOs
@@ -95,7 +95,7 @@ Prints out JSON in this shape:
 
 ```json
 {
-  "version": "<current code version>",
+  "version": "<current codo version>",
   "todos": [
     {
        "assignee": "chris",
@@ -118,6 +118,6 @@ There are code mods you can use to manipulate TODOs. Some cool ones:
 codo mod add-issue-for-all-untracked --issue="#123"
 
 # Bulk update TODO assignees
-code mod rename-assignee --from="old_name" --to="new_name"
+codo mod rename-assignee --from="old_name" --to="new_name"
 ```
 
